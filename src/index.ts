@@ -1,1 +1,2 @@
-export * from "./PostgresContractCache";
+export * from "./PgCacheOptions";
+export * from "./PgContractCache";
