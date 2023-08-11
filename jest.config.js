@@ -1,8 +1,10 @@
 module.exports = {
   // Automatically clear mock calls and instances between every test
   clearMocks: true,
+  preset: "@shelf/jest-postgres",
+  maxWorkers: 1,
 
-  moduleFileExtensions: ['ts', 'js'],
+  moduleFileExtensions: ["ts", "js"],
 
   testPathIgnorePatterns: [
     "/.yalc/",
@@ -11,14 +13,9 @@ module.exports = {
     "src/__tests__/utils.ts",
   ],
 
-  testEnvironment: 'node',
-
-  "transformIgnorePatterns": [
-    "<rootDir>/node_modules/(?!@assemblyscript/.*)"
-  ],
-
+  transformIgnorePatterns: ["<rootDir>/node_modules/(?!@assemblyscript/.*)"],
 
   transform: {
-    '^.+\\.(ts|js)$': 'ts-jest'
-  }
+    "^.+\\.(ts|js)$": "ts-jest",
+  },
 };
