@@ -2,6 +2,7 @@ import {
   BasicSortKeyCache,
   CacheKey,
   CacheOptions,
+  EvalStateResult,
   LoggerFactory,
   PruneStats,
   SortKeyCacheResult,
@@ -9,7 +10,9 @@ import {
 import { Client } from "pg";
 import { PgCacheOptions } from "./PgCacheOptions";
 
-export class PgContractCache<V> implements BasicSortKeyCache<V> {
+export class PgContractCache<V>
+  implements BasicSortKeyCache<EvalStateResult<V>>
+{
   private readonly logger = LoggerFactory.INST.create(PgContractCache.name);
 
   private readonly client: Client;
@@ -20,7 +23,8 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
   ) {
     if (!pgCacheOptions) {
       this.pgCacheOptions = {
-        maxEntriesPerContract: 10,
+        minEntriesPerContract: 10,
+        maxEntriesPerContract: 100,
       };
     }
     this.client = new Client(pgCacheOptions);
@@ -41,7 +45,24 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
           );
           CREATE INDEX IF NOT EXISTS idx_sort_key_cache_key_sk ON sort_key_cache (key, sort_key DESC);
           CREATE INDEX IF NOT EXISTS idx_sort_key_cache_key ON sort_key_cache (key);
-          CREATE INDEX IF NOT EXISTS idx_sort_key_cache_sk ON sort_key_cache (sort_key DESC);
+      `
+    );
+  }
+
+  private async validityTable() {
+    await this.client.query(
+      `
+          create table if not exists validity
+          (
+              sort_key      TEXT NOT NULL,
+              key           TEXT NOT NULL,
+              tx_id         TEXT NOT NULL,
+              valid         BOOLEAN NOT NULL,
+              error_message TEXT DEFAULT NULL,
+              PRIMARY KEY (key, tx_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_validity_key_sk ON validity (key, sort_key DESC);
+          CREATE INDEX IF NOT EXISTS idx_validity_key ON validity (key);
       `
     );
   }
@@ -70,7 +91,9 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
     return Promise.resolve(undefined);
   }
 
-  async get(cacheKey: CacheKey): Promise<SortKeyCacheResult<V> | null> {
+  async get(
+    cacheKey: CacheKey
+  ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
     const result = await this.client.query(
       `SELECT value
        FROM sort_key_cache
@@ -80,21 +103,26 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
     );
 
     if (result && result.rows.length > 0) {
-      return new SortKeyCacheResult<V>(cacheKey.sortKey, result.rows[0].value);
+      return new SortKeyCacheResult<EvalStateResult<V>>(
+        cacheKey.sortKey,
+        new EvalStateResult(result.rows[0].value, {}, {})
+      );
     }
     return null;
   }
 
-  async getLast(key: string): Promise<SortKeyCacheResult<V> | null> {
+  async getLast(
+    key: string
+  ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
     const result = await this.client.query(
       "SELECT sort_key, value FROM sort_key_cache WHERE key = $1 ORDER BY sort_key DESC LIMIT 1",
       [key]
     );
 
     if (result && result.rows && result.rows.length > 0) {
-      return new SortKeyCacheResult<V>(
+      return new SortKeyCacheResult<EvalStateResult<V>>(
         result.rows[0].sort_key,
-        result.rows[0].value
+        new EvalStateResult<V>(result.rows[0].value, {}, {})
       );
     }
     return null;
@@ -110,16 +138,16 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
   async getLessOrEqual(
     key: string,
     sortKey: string
-  ): Promise<SortKeyCacheResult<V> | null> {
+  ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
     const result = await this.client.query(
       "SELECT sort_key, value FROM sort_key_cache WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1",
       [key, sortKey]
     );
 
     if (result && result.rows.length > 0) {
-      return new SortKeyCacheResult<V>(
+      return new SortKeyCacheResult<EvalStateResult<V>>(
         result.rows[0].sort_key,
-        result.rows[0].value
+        new EvalStateResult<V>(result.rows[0].value, {}, {})
       );
     }
     return null;
@@ -131,6 +159,7 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
     );
     await this.client.connect();
     await this.sortKeyTable();
+    await this.validityTable();
     this.logger.info(`Connected`);
   }
 
@@ -183,17 +212,50 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
     };
   }
 
-  async put(stateCacheKey: CacheKey, value: V): Promise<void> {
+  async put(stateCacheKey: CacheKey, value: EvalStateResult<V>): Promise<void> {
     await this.removeOldestEntries(stateCacheKey.key);
+
     await this.client.query(
-      "INSERT INTO sort_key_cache (key, sort_key, value) VALUES ($1, $2, $3) ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value",
-      [stateCacheKey.key, stateCacheKey.sortKey, value]
+      `
+                INSERT INTO sort_key_cache (key, sort_key, value)
+                VALUES ($1, $2, $3)
+                ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
+      [stateCacheKey.key, stateCacheKey.sortKey, value.state]
     );
+
+    for (const tx in value.validity) {
+      await this.client.query(
+        `
+                  INSERT INTO validity (key, sort_key, tx_id, valid, error_message)
+                  VALUES ($1, $2, $3, $4, $5)
+                  ON CONFLICT(key, tx_id) DO UPDATE 
+                      SET valid = EXCLUDED.valid,
+                          sort_key = EXCLUDED.sort_key,
+                          error_message = EXCLUDED.error_message`,
+        [
+          stateCacheKey.key,
+          stateCacheKey.sortKey,
+          tx,
+          value.validity[tx],
+          value.errorMessages[tx],
+        ]
+      );
+    }
   }
 
   private async removeOldestEntries(key: string) {
-    await this.client.query(
+    const rs = await this.client.query(
       `
+          SELECT count(1) as total
+          FROM sort_key_cache
+          GROUP BY key
+      `
+    );
+    if (rs.rows.length > 0) {
+      const entriesTotal = rs.rows[0].total;
+      if (entriesTotal >= this.pgCacheOptions.maxEntriesPerContract) {
+        await this.client.query(
+          `
           WITH sorted_cache AS
                    (SELECT id, row_number() over (ORDER BY sort_key DESC) AS rw
                     FROM sort_key_cache
@@ -202,8 +264,10 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
           FROM sort_key_cache
           WHERE id IN (SELECT id FROM sorted_cache WHERE rw >= $2);
       `,
-      [key, this.pgCacheOptions.maxEntriesPerContract]
-    );
+          [key, this.pgCacheOptions.minEntriesPerContract]
+        );
+      }
+    }
   }
 
   async rollback(): Promise<void> {
@@ -218,9 +282,11 @@ export class PgContractCache<V> implements BasicSortKeyCache<V> {
     await this.client.query(
       `
           DROP INDEX IF EXISTS idx_sort_key_cache_key_sk;
-          DROP INDEX IF EXISTS idx_sort_key_cache_sk;
           DROP INDEX IF EXISTS idx_sort_key_cache_key;
           DROP TABLE IF EXISTS sort_key_cache;
+          DROP INDEX IF EXISTS idx_validity_key;
+          DROP INDEX IF EXISTS idx_validity_key_sk;
+          DROP TABLE IF EXISTS validity;
       `
     );
   }

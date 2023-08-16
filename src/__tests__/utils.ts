@@ -1,6 +1,6 @@
 import { PgContractCache } from "../PgContractCache";
 import { PgCacheOptions } from "../PgCacheOptions";
-import { defaultCacheOptions } from "warp-contracts";
+import { defaultCacheOptions, EvalStateResult } from "warp-contracts";
 
 export const getContractId = (i: number) => `contract${i}`.padStart(43, "0");
 
@@ -18,13 +18,14 @@ export const cache = async function (
   maxEntries?: number
 ): Promise<PgContractCache<any>> {
   const pgOptions: PgCacheOptions = {
+    minEntriesPerContract: maxEntries || 100 * numRepeatingEntries,
     maxEntriesPerContract: maxEntries || 100 * numRepeatingEntries,
     user: "postgres",
     database: "postgres",
     port: 5432,
   };
 
-  const sut = new PgContractCache<any>(defaultCacheOptions, pgOptions);
+  const sut = new PgContractCache<unknown>(defaultCacheOptions, pgOptions);
   await sut.open();
 
   for (let i = 0; i < numContracts; i++) {
@@ -34,10 +35,14 @@ export const cache = async function (
           key: getContractId(i),
           sortKey: getSortKey(j),
         },
-        { result: `contract${i}:${j}` }
+        evalState(`{ "contract${i}":"${j}" }`)
       );
     }
   }
 
   return sut;
+};
+
+export const evalState = function (value: any) {
+  return new EvalStateResult(value, {}, {});
 };
