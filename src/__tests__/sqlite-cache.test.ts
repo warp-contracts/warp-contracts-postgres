@@ -1,4 +1,4 @@
-import { cache, getContractId, getSortKey } from "./utils";
+import { cache, getContractId, getSortKey, evalState } from "./utils";
 import { CacheKey } from "warp-contracts";
 
 describe("Sqlite cache", () => {
@@ -11,7 +11,7 @@ describe("Sqlite cache", () => {
         sortKey:
           "000000860512,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
       },
-      { result: "contract0:sortKey0" }
+      evalState({ result: "contract0:sortKey0" })
     );
     await sut.put(
       {
@@ -19,7 +19,7 @@ describe("Sqlite cache", () => {
         sortKey:
           "000000860513,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
       },
-      { result: "contract1:sortKey1" }
+      evalState({ result: "contract1:sortKey1" })
     );
     await sut.put(
       {
@@ -27,7 +27,7 @@ describe("Sqlite cache", () => {
         sortKey:
           "000000860514,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
       },
-      { result: "contract1:sortKey2" }
+      evalState({ result: "contract1:sortKey2" })
     );
     await sut.put(
       {
@@ -35,7 +35,7 @@ describe("Sqlite cache", () => {
         sortKey:
           "000000860515,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
       },
-      { result: "contract1:sortKey3" }
+      evalState({ result: "contract1:sortKey3" })
     );
     await sut.put(
       {
@@ -43,7 +43,7 @@ describe("Sqlite cache", () => {
         sortKey:
           "000000860513,1643210931888,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
       },
-      { result: "contract2:sortKey1" }
+      evalState({ result: "contract2:sortKey1" })
     );
 
     expect(
@@ -56,7 +56,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860513,1643210931888,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract2:sortKey1" },
+      cachedValue: evalState({ result: "contract2:sortKey1" }),
     });
     expect(
       await sut.get(
@@ -68,7 +68,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860514,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract1:sortKey2" },
+      cachedValue: evalState({ result: "contract1:sortKey2" }),
     });
     expect(
       await sut.get(
@@ -80,7 +80,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860512,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract0:sortKey0" },
+      cachedValue: evalState({ result: "contract0:sortKey0" }),
     });
     expect(
       await sut.get(
@@ -115,7 +115,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860513,1643210931888,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract2:sortKey1" },
+      cachedValue: evalState({ result: "contract2:sortKey1" }),
     });
     expect(
       await sut.getLessOrEqual(
@@ -125,7 +125,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860513,1643210931888,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract2:sortKey1" },
+      cachedValue: evalState({ result: "contract2:sortKey1" }),
     });
     expect(
       await sut.getLessOrEqual(
@@ -142,7 +142,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860513,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract1:sortKey1" },
+      cachedValue: evalState({ result: "contract1:sortKey1" }),
     });
 
     expect(
@@ -159,7 +159,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860512,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract0:sortKey0" },
+      cachedValue: evalState({ result: "contract0:sortKey0" }),
     });
     expect(
       await sut.getLessOrEqual(
@@ -169,7 +169,7 @@ describe("Sqlite cache", () => {
     ).toEqual({
       sortKey:
         "000000860512,1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
-      cachedValue: { result: "contract0:sortKey0" },
+      cachedValue: evalState({ result: "contract0:sortKey0" }),
     });
     expect(
       await sut.getLessOrEqual(
@@ -192,7 +192,7 @@ describe("Sqlite cache", () => {
           key: getContractId(0),
           sortKey: getSortKey(j),
         },
-        { result: `contract${0}:${j}` }
+        evalState({ result: `contract${0}:${j}` })
       );
     }
 
@@ -202,7 +202,7 @@ describe("Sqlite cache", () => {
         new CacheKey(getContractId(0), getSortKey(j))
       );
       expect(result).toBeTruthy();
-      expect(result?.cachedValue.result).toBe(`contract${0}:${j}`);
+      expect(result?.cachedValue.state.result).toBe(`contract${0}:${j}`);
     }
 
     // This put causes cleanup
@@ -211,7 +211,7 @@ describe("Sqlite cache", () => {
         key: getContractId(0),
         sortKey: getSortKey(max),
       },
-      { result: `contract${0}:${max}` }
+      evalState({ result: `contract${0}:${max}` })
     );
 
     for (let i = 0; i <= max; i++) {
@@ -222,7 +222,7 @@ describe("Sqlite cache", () => {
         expect(result).toBeFalsy();
       } else {
         expect(result).toBeTruthy();
-        expect(result?.cachedValue.result).toBe(`contract${0}:${i}`);
+        expect(result?.cachedValue.state.result).toBe(`contract${0}:${i}`);
       }
     }
 
@@ -232,7 +232,7 @@ describe("Sqlite cache", () => {
         key: getContractId(0),
         sortKey: getSortKey(max + 1),
       },
-      { result: `contract${0}:${max + 1}` }
+      evalState({ result: `contract${0}:${max + 1}` })
     );
 
     for (let i = 0; i <= max + 1; i++) {
@@ -243,7 +243,7 @@ describe("Sqlite cache", () => {
         expect(result).toBeFalsy();
       } else {
         expect(result).toBeTruthy();
-        expect(result?.cachedValue.result).toBe(`contract${0}:${i}`);
+        expect(result!.cachedValue.state.result).toBe(`contract${0}:${i}`);
       }
     }
     await sut.drop();
@@ -258,21 +258,21 @@ describe("Sqlite cache", () => {
         key: getContractId(0),
         sortKey: getSortKey(5),
       },
-      { result: `contract5` }
+      evalState({ result: `contract5` })
     );
     await sut.put(
       {
         key: getContractId(0),
         sortKey: getSortKey(7),
       },
-      { result: `contract7` }
+      evalState({ result: `contract7` })
     );
     await sut.put(
       {
         key: getContractId(0),
         sortKey: getSortKey(2),
       },
-      { result: `contract2` }
+      evalState({ result: `contract2` })
     );
 
     const result5 = await sut.get(
@@ -292,23 +292,4 @@ describe("Sqlite cache", () => {
     await sut.drop();
     await sut.close();
   });
-
-  // FIXME: we expect only valid jsons for now...
-  // it("properly encodes entries", async () => {
-  //   const sut = await cache(DB_NAME, 0, 0, {
-  //     maxEntriesPerContract: 1000,
-  //   });
-  //   await sut.open();
-  //
-  //   const data = fs.readFileSync(
-  //     "./src/__tests__/problematic-strings.txt",
-  //     "utf-8"
-  //   );
-  //   await sut.put({ key: getContractId(0), sortKey: getSortKey(0) }, data);
-  //
-  //   const tmp = await sut.getLast(getContractId(0));
-  //   expect(tmp?.cachedValue).toBe(data);
-  //   await sut.drop();
-  //   await sut.close();
-  // });
 });
