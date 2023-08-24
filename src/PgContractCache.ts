@@ -35,11 +35,12 @@ export class PgContractCache<V>
       `
           CREATE TABLE IF NOT EXISTS sort_key_cache
           (
-              id       bigserial,
-              key      TEXT NOT NULL,
-              sort_key TEXT NOT NULL,
-              value    JSONB,
-              state_hash TEXT, 
+              id            bigserial,
+              key           TEXT NOT NULL,
+              sort_key      TEXT NOT NULL,
+              value         JSONB,
+              state_hash    TEXT,
+              signature     TEXT,
               validity_hash TEXT,
               PRIMARY KEY (key, sort_key)
           );
@@ -226,12 +227,12 @@ export class PgContractCache<V>
     for (const tx in value.validity) {
       await this.client.query(
         `
-                  INSERT INTO validity (key, sort_key, tx_id, valid, error_message)
-                  VALUES ($1, $2, $3, $4, $5)
-                  ON CONFLICT(key, tx_id) DO UPDATE 
-                      SET valid = EXCLUDED.valid,
-                          sort_key = EXCLUDED.sort_key,
-                          error_message = EXCLUDED.error_message`,
+            INSERT INTO validity (key, sort_key, tx_id, valid, error_message)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT(key, tx_id) DO UPDATE
+                SET valid         = EXCLUDED.valid,
+                    sort_key      = EXCLUDED.sort_key,
+                    error_message = EXCLUDED.error_message`,
         [
           stateCacheKey.key,
           stateCacheKey.sortKey,
@@ -268,6 +269,22 @@ export class PgContractCache<V>
         );
       }
     }
+  }
+
+  async setSignature(
+    cacheKey: CacheKey,
+    hash: string,
+    signature: string
+  ): Promise<void> {
+    await this.client.query(
+      `
+                UPDATE sort_key_cache
+                SET state_hash = $1, 
+                    signature = $2
+                WHERE key = $3
+                  AND sort_key = $4`,
+      [hash, signature, cacheKey.key, cacheKey.sortKey]
+    );
   }
 
   async rollback(): Promise<void> {
