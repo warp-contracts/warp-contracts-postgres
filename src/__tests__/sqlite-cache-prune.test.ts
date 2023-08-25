@@ -1,7 +1,7 @@
 import { cache, getContractId, getSortKey } from "./utils";
 import { CacheKey } from "warp-contracts";
 
-describe("Sqlite cache prune", () => {
+describe("Postgres cache prune", () => {
   it("handle improper args", async () => {
     const contracts = 10;
     const entriesPerContract = 1;

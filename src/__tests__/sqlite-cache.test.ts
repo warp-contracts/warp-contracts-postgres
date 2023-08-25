@@ -1,7 +1,7 @@
 import { cache, getContractId, getSortKey, evalState } from "./utils";
 import { CacheKey } from "warp-contracts";
 
-describe("Sqlite cache", () => {
+describe("Postgres cache", () => {
   it("should return proper data", async () => {
     const sut = await cache(0, 100);
 
@@ -44,6 +44,16 @@ describe("Sqlite cache", () => {
           "000000860513,1643210931888,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
       },
       evalState({ result: "contract2:sortKey1" })
+    );
+
+    await sut.setSignature(
+      {
+        key: "contract2",
+        sortKey:
+          "000000860513,1643210931888,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767",
+      },
+      "asd",
+      "asd"
     );
 
     expect(

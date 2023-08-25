@@ -7,7 +7,7 @@ import {
   PruneStats,
   SortKeyCacheResult,
 } from "warp-contracts";
-import { Client } from "pg";
+import { Pool, PoolClient } from "pg";
 import { PgCacheOptions } from "./PgCacheOptions";
 
 export class PgContractCache<V>
@@ -15,7 +15,8 @@ export class PgContractCache<V>
 {
   private readonly logger = LoggerFactory.INST.create(PgContractCache.name);
 
-  private readonly client: Client;
+  private readonly pool: Pool;
+  private client: PoolClient;
 
   constructor(
     private readonly cacheOptions: CacheOptions,
@@ -27,7 +28,7 @@ export class PgContractCache<V>
         maxEntriesPerContract: 100,
       };
     }
-    this.client = new Client(pgCacheOptions);
+    this.pool = new Pool(pgCacheOptions);
   }
 
   private async sortKeyTable() {
@@ -73,7 +74,8 @@ export class PgContractCache<V>
   }
 
   async close(): Promise<void> {
-    await this.client.end();
+    await this.client.release();
+    await this.pool.end();
     this.logger.info(`Connection closed`);
     return;
   }
@@ -155,10 +157,11 @@ export class PgContractCache<V>
   }
 
   async open(): Promise<void> {
+    const conf = this.pgCacheOptions;
     this.logger.info(
-      `Connecting pg... ${this.client.user}@${this.client.host}:${this.client.port}/${this.client.database}`
+      `Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`
     );
-    await this.client.connect();
+    this.client = await this.pool.connect();
     await this.sortKeyTable();
     await this.validityTable();
     this.logger.info(`Connected`);
@@ -271,13 +274,16 @@ export class PgContractCache<V>
     }
   }
 
+    /**
+     * Executed in a separate pool client, so that in can be used by a separate worker.
+     */
   async setSignature(
     cacheKey: CacheKey,
     hash: string,
     signature: string
   ): Promise<void> {
     this.logger.debug(`Attempting to set signature`, cacheKey, signature);
-    const result = await this.client.query(
+    const result = await this.pool.query(
       `
                     WITH updated AS (
                         UPDATE sort_key_cache
