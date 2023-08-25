@@ -11,8 +11,7 @@ import { Client } from "pg";
 import { PgCacheOptions } from "./PgCacheOptions";
 
 export class PgContractCache<V>
-  implements BasicSortKeyCache<EvalStateResult<V>>
-{
+  implements BasicSortKeyCache<EvalStateResult<V>> {
   private readonly logger = LoggerFactory.INST.create(PgContractCache.name);
 
   private readonly client: Client;
@@ -41,7 +40,6 @@ export class PgContractCache<V>
               value         JSONB,
               state_hash    TEXT,
               signature     TEXT,
-              validity_hash TEXT,
               PRIMARY KEY (key, sort_key)
           );
           CREATE INDEX IF NOT EXISTS idx_sort_key_cache_key_sk ON sort_key_cache (key, sort_key DESC);
@@ -50,23 +48,24 @@ export class PgContractCache<V>
     );
   }
 
-  private async validityTable() {
-    await this.client.query(
-      `
-          create table if not exists validity
-          (
-              sort_key      TEXT NOT NULL,
-              key           TEXT NOT NULL,
-              tx_id         TEXT NOT NULL,
-              valid         BOOLEAN NOT NULL,
-              error_message TEXT DEFAULT NULL,
-              PRIMARY KEY (key, tx_id)
-          );
-          CREATE INDEX IF NOT EXISTS idx_validity_key_sk ON validity (key, sort_key DESC);
-          CREATE INDEX IF NOT EXISTS idx_validity_key ON validity (key);
-      `
-    );
-  }
+    private async validityTable() {
+        await this.client.query(
+            `
+                create table if not exists validity
+                (
+                    id            BIGSERIAL PRIMARY KEY,
+                    sort_key      TEXT    NOT NULL,
+                    key           TEXT    NOT NULL,
+                    tx_id         TEXT    NOT NULL,
+                    valid         BOOLEAN NOT NULL,
+                    error_message TEXT DEFAULT NULL,
+                    UNIQUE (key, tx_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_validity_key_sk ON validity (key, id DESC);
+                CREATE INDEX IF NOT EXISTS idx_validity_key ON validity (key);
+            `
+        );
+    }
 
   async begin(): Promise<void> {
     await this.client.query("BEGIN;");
@@ -271,21 +270,28 @@ export class PgContractCache<V>
     }
   }
 
-  async setSignature(
-    cacheKey: CacheKey,
-    hash: string,
-    signature: string
-  ): Promise<void> {
-    await this.client.query(
-      `
-                UPDATE sort_key_cache
-                SET state_hash = $1, 
-                    signature = $2
-                WHERE key = $3
-                  AND sort_key = $4`,
-      [hash, signature, cacheKey.key, cacheKey.sortKey]
-    );
-  }
+    // @ts-ignore
+    async setSignature(
+        cacheKey: CacheKey,
+        hash: string,
+        signature: string
+    ): Promise<unknown> {
+        this.logger.debug(`Attempting to set signature`, cacheKey, signature)
+        const result = await this.client.query(`
+                    WITH updated AS (
+                        UPDATE sort_key_cache
+                            SET state_hash = $1,
+                                signature = $2
+                            WHERE key = $3
+                                AND sort_key = $4
+                            RETURNING *)
+                    SELECT count(*) AS total, array_agg(key) AS keys
+                    FROM updated;`,
+            [hash, signature, cacheKey.key, cacheKey.sortKey]
+        );
+        this.logger.debug(`Signature set`, result)
+        return result;
+    }
 
   async rollback(): Promise<void> {
     await this.client.query("BEGIN;");
