@@ -11,7 +11,8 @@ import { Client } from "pg";
 import { PgCacheOptions } from "./PgCacheOptions";
 
 export class PgContractCache<V>
-  implements BasicSortKeyCache<EvalStateResult<V>> {
+  implements BasicSortKeyCache<EvalStateResult<V>>
+{
   private readonly logger = LoggerFactory.INST.create(PgContractCache.name);
 
   private readonly client: Client;
@@ -48,9 +49,9 @@ export class PgContractCache<V>
     );
   }
 
-    private async validityTable() {
-        await this.client.query(
-            `
+  private async validityTable() {
+    await this.client.query(
+      `
                 create table if not exists validity
                 (
                     id            BIGSERIAL PRIMARY KEY,
@@ -64,8 +65,8 @@ export class PgContractCache<V>
                 CREATE INDEX IF NOT EXISTS idx_validity_key_sk ON validity (key, id DESC);
                 CREATE INDEX IF NOT EXISTS idx_validity_key ON validity (key);
             `
-        );
-    }
+    );
+  }
 
   async begin(): Promise<void> {
     await this.client.query("BEGIN;");
@@ -270,14 +271,14 @@ export class PgContractCache<V>
     }
   }
 
-    // @ts-ignore
-    async setSignature(
-        cacheKey: CacheKey,
-        hash: string,
-        signature: string
-    ): Promise<unknown> {
-        this.logger.debug(`Attempting to set signature`, cacheKey, signature)
-        const result = await this.client.query(`
+  async setSignature(
+    cacheKey: CacheKey,
+    hash: string,
+    signature: string
+  ): Promise<void> {
+    this.logger.debug(`Attempting to set signature`, cacheKey, signature);
+    const result = await this.client.query(
+      `
                     WITH updated AS (
                         UPDATE sort_key_cache
                             SET state_hash = $1,
@@ -287,11 +288,10 @@ export class PgContractCache<V>
                             RETURNING *)
                     SELECT count(*) AS total, array_agg(key) AS keys
                     FROM updated;`,
-            [hash, signature, cacheKey.key, cacheKey.sortKey]
-        );
-        this.logger.debug(`Signature set`, result)
-        return result;
-    }
+      [hash, signature, cacheKey.key, cacheKey.sortKey]
+    );
+    this.logger.debug(`Signature set`, result);
+  }
 
   async rollback(): Promise<void> {
     await this.client.query("BEGIN;");
