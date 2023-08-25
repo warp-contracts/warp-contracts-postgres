@@ -274,9 +274,9 @@ export class PgContractCache<V>
     }
   }
 
-    /**
-     * Executed in a separate pool client, so that in can be used by a separate worker.
-     */
+  /**
+   * Executed in a separate pool client, so that in can be used by a separate worker.
+   */
   async setSignature(
     cacheKey: CacheKey,
     hash: string,
