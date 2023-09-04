@@ -162,6 +162,9 @@ export class PgContractCache<V>
       `Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`
     );
     this.client = await this.pool.connect();
+    await this.client.query(
+      "CREATE schema if not exists warp; SET search_path TO 'warp';"
+    );
     await this.sortKeyTable();
     await this.validityTable();
     this.logger.info(`Connected`);
@@ -286,7 +289,7 @@ export class PgContractCache<V>
     const result = await this.pool.query(
       `
                     WITH updated AS (
-                        UPDATE sort_key_cache
+                        UPDATE warp.sort_key_cache
                             SET state_hash = $1,
                                 signature = $2
                             WHERE key = $3
