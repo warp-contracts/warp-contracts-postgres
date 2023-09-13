@@ -74,7 +74,9 @@ export class PgContractCache<V>
   }
 
   async close(): Promise<void> {
-    await this.client.release();
+    if (this.client) {
+      await this.client.release();
+    }
     await this.pool.end();
     this.logger.info(`Connection closed`);
     return;
@@ -85,9 +87,10 @@ export class PgContractCache<V>
   }
 
   async delete(key: string): Promise<void> {
-    await this.client.query("DELETE FROM sort_key_cache WHERE key = $1;", [
-      key,
-    ]);
+    await this.connection().query(
+      "DELETE FROM warp.sort_key_cache WHERE key = $1;",
+      [key]
+    );
   }
 
   dump(): Promise<any> {
@@ -97,9 +100,9 @@ export class PgContractCache<V>
   async get(
     cacheKey: CacheKey
   ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
-    const result = await this.client.query(
+    const result = await this.connection().query(
       `SELECT value
-       FROM sort_key_cache
+       FROM warp.sort_key_cache
        WHERE key = $1
          AND sort_key = $2;`,
       [cacheKey.key, cacheKey.sortKey]
@@ -117,8 +120,8 @@ export class PgContractCache<V>
   async getLast(
     key: string
   ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
-    const result = await this.client.query(
-      "SELECT sort_key, value FROM sort_key_cache WHERE key = $1 ORDER BY sort_key DESC LIMIT 1",
+    const result = await this.connection().query(
+      "SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 ORDER BY sort_key DESC LIMIT 1",
       [key]
     );
 
@@ -132,8 +135,8 @@ export class PgContractCache<V>
   }
 
   async getLastSortKey(): Promise<string | null> {
-    const result = await this.client.query(
-      "SELECT max(sort_key) as sort_key FROM sort_key_cache"
+    const result = await this.connection().query(
+      "SELECT max(sort_key) as sort_key FROM warp.sort_key_cache"
     );
     return result.rows[0].sort_key == "" ? null : result.rows[0].sortKey;
   }
@@ -142,8 +145,8 @@ export class PgContractCache<V>
     key: string,
     sortKey: string
   ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
-    const result = await this.client.query(
-      "SELECT sort_key, value FROM sort_key_cache WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1",
+    const result = await this.connection().query(
+      "SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1",
       [key, sortKey]
     );
 
@@ -168,6 +171,13 @@ export class PgContractCache<V>
     await this.sortKeyTable();
     await this.validityTable();
     this.logger.info(`Connected`);
+  }
+
+  private connection(): Pool | PoolClient {
+    if (this.client) {
+      return this.client;
+    }
+    return this.pool;
   }
 
   /**
@@ -222,18 +232,18 @@ export class PgContractCache<V>
   async put(stateCacheKey: CacheKey, value: EvalStateResult<V>): Promise<void> {
     await this.removeOldestEntries(stateCacheKey.key);
 
-    await this.client.query(
+    await this.connection().query(
       `
-                INSERT INTO sort_key_cache (key, sort_key, value)
+                INSERT INTO warp.sort_key_cache (key, sort_key, value)
                 VALUES ($1, $2, $3)
                 ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
       [stateCacheKey.key, stateCacheKey.sortKey, value.state]
     );
 
     for (const tx in value.validity) {
-      await this.client.query(
+      await this.connection().query(
         `
-            INSERT INTO validity (key, sort_key, tx_id, valid, error_message)
+            INSERT INTO warp.validity (key, sort_key, tx_id, valid, error_message)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT(key, tx_id) DO UPDATE
                 SET valid         = EXCLUDED.valid,
@@ -251,24 +261,24 @@ export class PgContractCache<V>
   }
 
   private async removeOldestEntries(key: string) {
-    const rs = await this.client.query(
+    const rs = await this.connection().query(
       `
           SELECT count(1) as total
-          FROM sort_key_cache
+          FROM warp.sort_key_cache
           GROUP BY key
       `
     );
     if (rs.rows.length > 0) {
       const entriesTotal = rs.rows[0].total;
       if (entriesTotal >= this.pgCacheOptions.maxEntriesPerContract) {
-        await this.client.query(
+        await this.connection().query(
           `
           WITH sorted_cache AS
                    (SELECT id, row_number() over (ORDER BY sort_key DESC) AS rw
-                    FROM sort_key_cache
+                    FROM warp.sort_key_cache
                     WHERE key = $1)
           DELETE
-          FROM sort_key_cache
+          FROM warp.sort_key_cache
           WHERE id IN (SELECT id FROM sorted_cache WHERE rw >= $2);
       `,
           [key, this.pgCacheOptions.minEntriesPerContract]
