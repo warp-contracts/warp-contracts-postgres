@@ -46,6 +46,7 @@ export class PgContractCache<V>
           );
           CREATE INDEX IF NOT EXISTS idx_sort_key_cache_key_sk ON sort_key_cache (key, sort_key DESC);
           CREATE INDEX IF NOT EXISTS idx_sort_key_cache_key ON sort_key_cache (key);
+          CREATE INDEX IF NOT EXISTS idx_sort_key_cache_owner ON sort_key_cache ((value ->> 'owner'));
       `
     );
   }
@@ -325,6 +326,7 @@ export class PgContractCache<V>
       `
           DROP INDEX IF EXISTS idx_sort_key_cache_key_sk;
           DROP INDEX IF EXISTS idx_sort_key_cache_key;
+          DROP INDEX IF EXISTS idx_sort_key_cache_owner;
           DROP TABLE IF EXISTS sort_key_cache;
           DROP INDEX IF EXISTS idx_validity_key;
           DROP INDEX IF EXISTS idx_validity_key_sk;
