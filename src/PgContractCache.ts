@@ -231,6 +231,7 @@ export class PgContractCache<V>
   }
 
   async put(stateCacheKey: CacheKey, value: EvalStateResult<V>): Promise<void> {
+    const stringifiedState = JSON.stringify(value.state);
     await this.removeOldestEntries(stateCacheKey.key);
 
     await this.connection().query(
@@ -238,7 +239,7 @@ export class PgContractCache<V>
                 INSERT INTO warp.sort_key_cache (key, sort_key, value)
                 VALUES ($1, $2, $3)
                 ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
-      [stateCacheKey.key, stateCacheKey.sortKey, value.state]
+      [stateCacheKey.key, stateCacheKey.sortKey, stringifiedState]
     );
 
     for (const tx in value.validity) {
