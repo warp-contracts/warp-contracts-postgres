@@ -1,4 +1,4 @@
-import { ClientConfig } from "pg";
+import { ClientConfig } from 'pg';
 
 export interface PgContractCacheOptions extends ClientConfig {
   minEntriesPerContract: number;

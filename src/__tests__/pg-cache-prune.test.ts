@@ -1,8 +1,8 @@
-import { contractCache, getContractId, getSortKey } from "./utils";
-import { CacheKey } from "warp-contracts";
+import { contractCache, getContractId, getSortKey } from './utils';
+import { CacheKey } from 'warp-contracts';
 
-describe("Postgres cache prune", () => {
-  it("handle improper args", async () => {
+describe('Postgres cache prune', () => {
+  it('handle improper args', async () => {
     const contracts = 10;
     const entriesPerContract = 1;
     const sut = await contractCache(contracts, entriesPerContract);
@@ -14,7 +14,7 @@ describe("Postgres cache prune", () => {
     await sut.close();
   });
 
-  it("no deletion should be performed", async () => {
+  it('no deletion should be performed', async () => {
     const contracts = 10;
     const entriesPerContract = 1;
     const sut = await contractCache(contracts, entriesPerContract);
@@ -30,31 +30,31 @@ describe("Postgres cache prune", () => {
     await sut.close();
   });
 
-  it("should remove all unneeded entries, one contract", async () => {
+  it('should remove all unneeded entries, one contract', async () => {
     const contracts = 1;
     const entriesPerContract = 10;
     const sut = await contractCache(contracts, entriesPerContract);
     expect(await sut.prune(1)).toMatchObject({
       entriesBefore: contracts * entriesPerContract,
-      entriesAfter: contracts * 1,
+      entriesAfter: contracts * 1
     });
     await sut.drop();
     await sut.close();
   });
 
-  it("should remove all unneeded entries, in many contracts", async () => {
+  it('should remove all unneeded entries, in many contracts', async () => {
     const contracts = 200;
     const entriesPerContract = 10;
     const sut = await contractCache(contracts, entriesPerContract);
     expect(await sut.prune(2)).toMatchObject({
       entriesBefore: contracts * entriesPerContract,
-      entriesAfter: contracts * 2,
+      entriesAfter: contracts * 2
     });
     await sut.drop();
     await sut.close();
   });
 
-  it("should remove oldest entries, in many contracts", async () => {
+  it('should remove oldest entries, in many contracts', async () => {
     const contracts = 100;
     const entriesPerContract = 20;
     const toLeave = 3;
@@ -64,33 +64,19 @@ describe("Postgres cache prune", () => {
     for (let i = 0; i < contracts; i++) {
       // Check newest elements are present
       for (let j = 0; j < toLeave; j++) {
-        expect(
-          await sut.get(
-            new CacheKey(
-              getContractId(i),
-              getSortKey(entriesPerContract - j - 1)
-            )
-          )
-        ).toBeTruthy();
+        expect(await sut.get(new CacheKey(getContractId(i), getSortKey(entriesPerContract - j - 1)))).toBeTruthy();
       }
 
       // Check old elements are removed
       for (let j = toLeave; j < entriesPerContract; j++) {
-        expect(
-          await sut.get(
-            new CacheKey(
-              getContractId(i),
-              getSortKey(entriesPerContract - j - 1)
-            )
-          )
-        ).toBeFalsy();
+        expect(await sut.get(new CacheKey(getContractId(i), getSortKey(entriesPerContract - j - 1)))).toBeFalsy();
       }
     }
     await sut.drop();
     await sut.close();
   });
 
-  it("deletes first contract from cache", async () => {
+  it('deletes first contract from cache', async () => {
     const contracts = 7;
     const entriesPerContract = 12;
     const sut = await contractCache(contracts, entriesPerContract);
@@ -99,24 +85,20 @@ describe("Postgres cache prune", () => {
 
     // Removed elements
     for (let j = 0; j < entriesPerContract; j++) {
-      expect(
-        await sut.get(new CacheKey(getContractId(0), getSortKey(j)))
-      ).toBeFalsy();
+      expect(await sut.get(new CacheKey(getContractId(0), getSortKey(j)))).toBeFalsy();
     }
 
     // Remaining elements
     for (let i = 1; i < contracts; i++) {
       for (let j = 0; j < entriesPerContract; j++) {
-        expect(
-          await sut.get(new CacheKey(getContractId(i), getSortKey(j)))
-        ).toBeTruthy();
+        expect(await sut.get(new CacheKey(getContractId(i), getSortKey(j)))).toBeTruthy();
       }
     }
     await sut.drop();
     await sut.close();
   });
 
-  it("deletes contract from the middle of the cache", async () => {
+  it('deletes contract from the middle of the cache', async () => {
     const contracts = 7;
     const entriesPerContract = 12;
     const removedContractIdx = 3;
@@ -127,9 +109,7 @@ describe("Postgres cache prune", () => {
     // Remaining elements
     for (let i = 0; i < contracts; i++) {
       for (let j = 0; j < entriesPerContract; j++) {
-        const data = await sut.get(
-          new CacheKey(getContractId(i), getSortKey(j))
-        );
+        const data = await sut.get(new CacheKey(getContractId(i), getSortKey(j)));
         if (i === removedContractIdx) {
           expect(data).toBeFalsy();
         } else {

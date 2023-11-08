@@ -1,14 +1,7 @@
-import {
-  BatchDBOp,
-  CacheKey,
-  LoggerFactory,
-  PruneStats,
-  SortKeyCache,
-  SortKeyCacheResult,
-} from "warp-contracts";
-import { Pool, PoolClient } from "pg";
-import { SortKeyCacheRangeOptions } from "warp-contracts/lib/types/cache/SortKeyCacheRangeOptions";
-import { PgSortKeyCacheOptions } from "./PgSortKeyCacheOptions";
+import { BatchDBOp, CacheKey, LoggerFactory, PruneStats, SortKeyCache, SortKeyCacheResult } from 'warp-contracts';
+import { Pool, PoolClient } from 'pg';
+import { SortKeyCacheRangeOptions } from 'warp-contracts/lib/types/cache/SortKeyCacheRangeOptions';
+import { PgSortKeyCacheOptions } from './PgSortKeyCacheOptions';
 
 export class PgSortKeyCache<V> implements SortKeyCache<V> {
   private readonly logger = LoggerFactory.INST.create(PgSortKeyCache.name);
@@ -19,17 +12,15 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
 
   constructor(private readonly pgCacheOptions: PgSortKeyCacheOptions) {
     if (!pgCacheOptions.tableName) {
-      throw new Error("Table name cannot be empty");
+      throw new Error('Table name cannot be empty');
     }
     this.tableName = pgCacheOptions.tableName;
   }
 
   private async createTableIfNotExists() {
-    await this.connection().query(
-      "CREATE schema if not exists warp; SET search_path TO 'warp';"
-    );
+    await this.connection().query("CREATE schema if not exists warp; SET search_path TO 'warp';");
     this.logger.info(`Attempting to create table ${this.tableName}`);
-    const query =       `
+    const query = `
           CREATE TABLE IF NOT EXISTS "${this.tableName}"
           (
               id            bigserial,
@@ -48,7 +39,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     if (this.client == null) {
       this.client = await this.pool.connect();
     }
-    await this.client.query("BEGIN;");
+    await this.client.query('BEGIN;');
   }
 
   async close(): Promise<void> {
@@ -68,14 +59,11 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       this.logger.error(`Called commit when no connection established.`);
       return;
     }
-    await this.client.query("COMMIT;");
+    await this.client.query('COMMIT;');
   }
 
   async delete(key: string): Promise<void> {
-    await this.connection().query(
-      `DELETE FROM warp."${this.tableName}" WHERE key = $1;`,
-      [key]
-    );
+    await this.connection().query(`DELETE FROM warp."${this.tableName}" WHERE key = $1;`, [key]);
   }
 
   dump(): Promise<any> {
@@ -104,35 +92,24 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     );
 
     if (result && result.rows && result.rows.length > 0) {
-      return new SortKeyCacheResult<V>(
-        result.rows[0].sort_key,
-        result.rows[0].value
-      );
+      return new SortKeyCacheResult<V>(result.rows[0].sort_key, result.rows[0].value);
     }
     return null;
   }
 
   async getLastSortKey(): Promise<string | null> {
-    const result = await this.connection().query(
-      `SELECT max(sort_key) as sort_key FROM warp."${this.tableName}";`
-    );
-    return result.rows[0].sort_key == "" ? null : result.rows[0].sortKey;
+    const result = await this.connection().query(`SELECT max(sort_key) as sort_key FROM warp."${this.tableName}";`);
+    return result.rows[0].sort_key == '' ? null : result.rows[0].sortKey;
   }
 
-  async getLessOrEqual(
-    key: string,
-    sortKey: string
-  ): Promise<SortKeyCacheResult<V> | null> {
+  async getLessOrEqual(key: string, sortKey: string): Promise<SortKeyCacheResult<V> | null> {
     const result = await this.connection().query(
       `SELECT sort_key, value FROM warp."${this.tableName}" WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1;`,
       [key, sortKey]
     );
 
     if (result && result.rows.length > 0) {
-      return new SortKeyCacheResult<V>(
-        result.rows[0].sort_key,
-        result.rows[0].value
-      );
+      return new SortKeyCacheResult<V>(result.rows[0].sort_key, result.rows[0].value);
     }
     return null;
   }
@@ -144,7 +121,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     });
 
     this.logger.info(`Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`);
-    await this.pool.query( "CREATE schema if not exists warp; SET search_path TO 'warp';");
+    await this.pool.query("CREATE schema if not exists warp; SET search_path TO 'warp';");
     await this.createTableIfNotExists();
     this.logger.info(`Setup finished`);
   }
@@ -201,7 +178,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       entriesBefore: allItems,
       entriesAfter: allItems - deleted,
       sizeBefore: -1,
-      sizeAfter: -1,
+      sizeAfter: -1
     };
   }
 
@@ -251,7 +228,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       this.logger.error(`Rollback called, but no connection established`);
       return;
     }
-    await this.client.query("ROLLBACK;");
+    await this.client.query('ROLLBACK;');
   }
 
   storage<S>(): S {
@@ -273,9 +250,9 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     try {
       await this.begin();
       for (const op of opStack) {
-        if (op.type === "put") {
+        if (op.type === 'put') {
           await this.put(op.key, op.value);
-        } else if (op.type === "del") {
+        } else if (op.type === 'del') {
           await this.delete(op.key);
         }
       }
@@ -300,11 +277,8 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     return Promise.resolve(undefined);
   }
 
-  async keys(
-    sortKey: string,
-    options?: SortKeyCacheRangeOptions
-  ): Promise<string[]> {
-    const order = options?.reverse ? "DESC" : "ASC";
+  async keys(sortKey: string, options?: SortKeyCacheRangeOptions): Promise<string[]> {
+    const order = options?.reverse ? 'DESC' : 'ASC';
     const result = await this.connection().query({
       text: `WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
                                      FROM warp."${this.tableName}"
@@ -318,16 +292,13 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
               from latest_values
               order by key ${order};`,
       values: [sortKey, options?.gte, options?.lt, options?.limit],
-      rowMode: "array",
+      rowMode: 'array'
     });
     return result.rows.flat();
   }
 
-  async kvMap(
-    sortKey: string,
-    options?: SortKeyCacheRangeOptions
-  ): Promise<Map<string, V>> {
-    const order = options?.reverse ? "DESC" : "ASC";
+  async kvMap(sortKey: string, options?: SortKeyCacheRangeOptions): Promise<Map<string, V>> {
+    const order = options?.reverse ? 'DESC' : 'ASC';
     const result = await this.connection().query(
       `
               WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
