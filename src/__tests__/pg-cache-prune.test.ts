@@ -1,11 +1,11 @@
-import { cache, getContractId, getSortKey } from "./utils";
+import { contractCache, getContractId, getSortKey } from "./utils";
 import { CacheKey } from "warp-contracts";
 
 describe("Postgres cache prune", () => {
   it("handle improper args", async () => {
     const contracts = 10;
     const entriesPerContract = 1;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
 
     const noopStats = { entriesAfter: contracts, entriesBefore: contracts };
     expect(await sut.prune(0)).toMatchObject(noopStats);
@@ -17,7 +17,7 @@ describe("Postgres cache prune", () => {
   it("no deletion should be performed", async () => {
     const contracts = 10;
     const entriesPerContract = 1;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
 
     const noopStats = { entriesAfter: contracts, entriesBefore: contracts };
     expect(await sut.prune(1)).toMatchObject(noopStats);
@@ -33,7 +33,7 @@ describe("Postgres cache prune", () => {
   it("should remove all unneeded entries, one contract", async () => {
     const contracts = 1;
     const entriesPerContract = 10;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
     expect(await sut.prune(1)).toMatchObject({
       entriesBefore: contracts * entriesPerContract,
       entriesAfter: contracts * 1,
@@ -45,7 +45,7 @@ describe("Postgres cache prune", () => {
   it("should remove all unneeded entries, in many contracts", async () => {
     const contracts = 200;
     const entriesPerContract = 10;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
     expect(await sut.prune(2)).toMatchObject({
       entriesBefore: contracts * entriesPerContract,
       entriesAfter: contracts * 2,
@@ -58,7 +58,7 @@ describe("Postgres cache prune", () => {
     const contracts = 100;
     const entriesPerContract = 20;
     const toLeave = 3;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
     await sut.prune(toLeave);
 
     for (let i = 0; i < contracts; i++) {
@@ -93,7 +93,7 @@ describe("Postgres cache prune", () => {
   it("deletes first contract from cache", async () => {
     const contracts = 7;
     const entriesPerContract = 12;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
 
     await sut.delete(getContractId(0));
 
@@ -120,7 +120,7 @@ describe("Postgres cache prune", () => {
     const contracts = 7;
     const entriesPerContract = 12;
     const removedContractIdx = 3;
-    const sut = await cache(contracts, entriesPerContract);
+    const sut = await contractCache(contracts, entriesPerContract);
 
     await sut.delete(getContractId(removedContractIdx));
 

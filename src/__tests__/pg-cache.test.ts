@@ -1,9 +1,9 @@
-import { cache, getContractId, getSortKey, evalState } from "./utils";
+import { contractCache, getContractId, getSortKey, evalState } from "./utils";
 import { CacheKey } from "warp-contracts";
 
 describe("Postgres cache", () => {
   it("should return proper data", async () => {
-    const sut = await cache(0, 100);
+    const sut = await contractCache(0, 100);
 
     await sut.put(
       {
@@ -194,7 +194,7 @@ describe("Postgres cache", () => {
 
   it("respects limits for max interactions per contract", async () => {
     const max = 10;
-    const sut = await cache(0, 0, max);
+    const sut = await contractCache(0, 0, max);
 
     for (let j = 0; j < max; j++) {
       await sut.put(
@@ -261,7 +261,7 @@ describe("Postgres cache", () => {
   });
 
   it("should keep the latest insert, even it is the smallest one", async () => {
-    const sut = await cache(0, 0, 2);
+    const sut = await contractCache(0, 0, 2);
 
     await sut.put(
       {
