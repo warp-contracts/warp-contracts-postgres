@@ -4,14 +4,12 @@ import {
   EvalStateResult,
   LoggerFactory,
   PruneStats,
-  SortKeyCacheResult,
-} from "warp-contracts";
-import { Pool, PoolClient } from "pg";
-import { PgContractCacheOptions } from "./PgContractCacheOptions";
+  SortKeyCacheResult
+} from 'warp-contracts';
+import { Pool, PoolClient } from 'pg';
+import { PgContractCacheOptions } from './PgContractCacheOptions';
 
-export class PgContractCache<V>
-  implements BasicSortKeyCache<EvalStateResult<V>>
-{
+export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>> {
   private readonly logger = LoggerFactory.INST.create(PgContractCache.name);
 
   private readonly pool: Pool;
@@ -21,7 +19,7 @@ export class PgContractCache<V>
     if (!pgCacheOptions) {
       this.pgCacheOptions = {
         minEntriesPerContract: 10,
-        maxEntriesPerContract: 100,
+        maxEntriesPerContract: 100
       };
     }
     this.pool = new Pool(pgCacheOptions);
@@ -67,7 +65,7 @@ export class PgContractCache<V>
   }
 
   async begin(): Promise<void> {
-    await this.client.query("BEGIN;");
+    await this.client.query('BEGIN;');
   }
 
   async close(): Promise<void> {
@@ -80,23 +78,18 @@ export class PgContractCache<V>
   }
 
   async commit(): Promise<void> {
-    await this.client.query("COMMIT;");
+    await this.client.query('COMMIT;');
   }
 
   async delete(key: string): Promise<void> {
-    await this.connection().query(
-      "DELETE FROM warp.sort_key_cache WHERE key = $1;",
-      [key]
-    );
+    await this.connection().query('DELETE FROM warp.sort_key_cache WHERE key = $1;', [key]);
   }
 
   dump(): Promise<any> {
     return Promise.resolve(undefined);
   }
 
-  async get(
-    cacheKey: CacheKey
-  ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
+  async get(cacheKey: CacheKey): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
     const result = await this.connection().query(
       `SELECT value
        FROM warp.sort_key_cache
@@ -114,11 +107,9 @@ export class PgContractCache<V>
     return null;
   }
 
-  async getLast(
-    key: string
-  ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
+  async getLast(key: string): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
     const result = await this.connection().query(
-      "SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 ORDER BY sort_key DESC LIMIT 1",
+      'SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 ORDER BY sort_key DESC LIMIT 1',
       [key]
     );
 
@@ -132,18 +123,13 @@ export class PgContractCache<V>
   }
 
   async getLastSortKey(): Promise<string | null> {
-    const result = await this.connection().query(
-      "SELECT max(sort_key) as sort_key FROM warp.sort_key_cache"
-    );
-    return result.rows[0].sort_key == "" ? null : result.rows[0].sortKey;
+    const result = await this.connection().query('SELECT max(sort_key) as sort_key FROM warp.sort_key_cache');
+    return result.rows[0].sort_key == '' ? null : result.rows[0].sortKey;
   }
 
-  async getLessOrEqual(
-    key: string,
-    sortKey: string
-  ): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
+  async getLessOrEqual(key: string, sortKey: string): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
     const result = await this.connection().query(
-      "SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1",
+      'SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1',
       [key, sortKey]
     );
 
@@ -158,13 +144,9 @@ export class PgContractCache<V>
 
   async open(): Promise<void> {
     const conf = this.pgCacheOptions;
-    this.logger.info(
-      `Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`
-    );
+    this.logger.info(`Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`);
     this.client = await this.pool.connect();
-    await this.client.query(
-      "CREATE schema if not exists warp; SET search_path TO 'warp';"
-    );
+    await this.client.query("CREATE schema if not exists warp; SET search_path TO 'warp';");
     await this.sortKeyTable();
     await this.validityTable();
     this.logger.info(`Connected`);
@@ -222,7 +204,7 @@ export class PgContractCache<V>
       entriesBefore: allItems,
       entriesAfter: allItems - deleted,
       sizeBefore: -1,
-      sizeAfter: -1,
+      sizeAfter: -1
     };
   }
 
@@ -247,13 +229,7 @@ export class PgContractCache<V>
                 SET valid         = EXCLUDED.valid,
                     sort_key      = EXCLUDED.sort_key,
                     error_message = EXCLUDED.error_message`,
-        [
-          stateCacheKey.key,
-          stateCacheKey.sortKey,
-          tx,
-          value.validity[tx],
-          value.errorMessages[tx],
-        ]
+        [stateCacheKey.key, stateCacheKey.sortKey, tx, value.validity[tx], value.errorMessages[tx]]
       );
     }
   }
@@ -288,11 +264,7 @@ export class PgContractCache<V>
   /**
    * Executed in a separate pool client, so that in can be used by a separate worker.
    */
-  async setSignature(
-    cacheKey: CacheKey,
-    hash: string,
-    signature: string
-  ): Promise<void> {
+  async setSignature(cacheKey: CacheKey, hash: string, signature: string): Promise<void> {
     this.logger.debug(`Attempting to set signature`, cacheKey, signature);
     const result = await this.pool.query(
       `
@@ -311,7 +283,7 @@ export class PgContractCache<V>
   }
 
   async rollback(): Promise<void> {
-    await this.client.query("ROLLBACK;");
+    await this.client.query('ROLLBACK;');
   }
 
   storage<S>(): S {

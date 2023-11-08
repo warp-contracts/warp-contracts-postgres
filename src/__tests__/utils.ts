@@ -1,18 +1,13 @@
-import { PgContractCache } from "../PgContractCache";
-import { PgContractCacheOptions } from "../PgContractCacheOptions";
-import { EvalStateResult } from "warp-contracts";
-import { PgSortKeyCacheOptions } from "../PgSortKeyCacheOptions";
-import { PgSortKeyCache } from "../PgSortKeyCache";
+import { PgContractCache } from '../PgContractCache';
+import { PgContractCacheOptions } from '../PgContractCacheOptions';
+import { EvalStateResult } from 'warp-contracts';
+import { PgSortKeyCacheOptions } from '../PgSortKeyCacheOptions';
+import { PgSortKeyCache } from '../PgSortKeyCache';
 
-export const getContractId = (i: number) => `contract${i}`.padStart(43, "0");
+export const getContractId = (i: number) => `contract${i}`.padStart(43, '0');
 
 export const getSortKey = (j: number) =>
-  `${j
-    .toString()
-    .padStart(
-      12,
-      "0"
-    )},1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767`;
+  `${j.toString().padStart(12, '0')},1643210931796,81e1bea09d3262ee36ce8cfdbbb2ce3feb18a717c3020c47d206cb8ecb43b767`;
 
 export const contractCache = async function (
   numContracts: number,
@@ -37,7 +32,7 @@ export const contractCache = async function (
       await sut.put(
         {
           key: getContractId(i),
-          sortKey: getSortKey(j),
+          sortKey: getSortKey(j)
         },
         evalState(`{ "contract${i}":"${j}" }`)
       );
@@ -52,7 +47,7 @@ export const sortKeyCache = async function (
   maxEntries?: number
 ): Promise<PgSortKeyCache<any>> {
   const pgOptions: PgSortKeyCacheOptions = {
-    tableName: "kiwi",
+    tableName: 'kiwi',
     minEntriesPerKey: maxEntries || 100 * numRepeatingEntries,
     maxEntriesPerKey: maxEntries || 100 * numRepeatingEntries,
     user: 'postgres',
