@@ -1,14 +1,13 @@
 import {
   BasicSortKeyCache,
   CacheKey,
-  CacheOptions,
   EvalStateResult,
   LoggerFactory,
   PruneStats,
   SortKeyCacheResult,
 } from "warp-contracts";
 import { Pool, PoolClient } from "pg";
-import { PgCacheOptions } from "./PgCacheOptions";
+import { PgContractCacheOptions } from "./PgContractCacheOptions";
 
 export class PgContractCache<V>
   implements BasicSortKeyCache<EvalStateResult<V>>
@@ -18,10 +17,7 @@ export class PgContractCache<V>
   private readonly pool: Pool;
   private client: PoolClient;
 
-  constructor(
-    private readonly cacheOptions: CacheOptions,
-    private readonly pgCacheOptions?: PgCacheOptions
-  ) {
+  constructor(private readonly pgCacheOptions?: PgContractCacheOptions) {
     if (!pgCacheOptions) {
       this.pgCacheOptions = {
         minEntriesPerContract: 10,
@@ -315,7 +311,7 @@ export class PgContractCache<V>
   }
 
   async rollback(): Promise<void> {
-    await this.client.query("BEGIN;");
+    await this.client.query("ROLLBACK;");
   }
 
   storage<S>(): S {

@@ -1,6 +1,6 @@
 import { ClientConfig } from "pg";
 
-export interface PgCacheOptions extends ClientConfig {
+export interface PgContractCacheOptions extends ClientConfig {
   minEntriesPerContract: number;
   maxEntriesPerContract: number;
 }
