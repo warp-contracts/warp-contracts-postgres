@@ -23,7 +23,9 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   private async createTableIfNotExists() {
-    await this.connection().query(`CREATE schema if not exists "${this.schemaName}"; SET search_path TO '${this.schemaName}';`);
+    await this.connection().query(
+      `CREATE schema if not exists "${this.schemaName}"; SET search_path TO '${this.schemaName}';`
+    );
     this.logger.info(`Attempting to create table ${this.tableName}`);
     const query = `
           CREATE TABLE IF NOT EXISTS "${this.tableName}"
@@ -103,7 +105,9 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async getLastSortKey(): Promise<string | null> {
-    const result = await this.connection().query(`SELECT max(sort_key) as sort_key FROM "${this.schemaName}"."${this.tableName}";`);
+    const result = await this.connection().query(
+      `SELECT max(sort_key) as sort_key FROM "${this.schemaName}"."${this.tableName}";`
+    );
     return result.rows[0].sort_key == '' ? null : result.rows[0].sortKey;
   }
 
