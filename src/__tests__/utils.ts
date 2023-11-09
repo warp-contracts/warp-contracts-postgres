@@ -47,6 +47,7 @@ export const sortKeyCache = async function (
   maxEntries?: number
 ): Promise<PgSortKeyCache<any>> {
   const pgOptions: PgSortKeyCacheOptions = {
+    schemaName: 'kv',
     tableName: 'kiwi',
     minEntriesPerKey: maxEntries || 100 * numRepeatingEntries,
     maxEntriesPerKey: maxEntries || 100 * numRepeatingEntries,
