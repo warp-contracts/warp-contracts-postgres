@@ -7,18 +7,23 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   private readonly logger = LoggerFactory.INST.create(PgSortKeyCache.name);
 
   private readonly tableName: string;
+  private readonly schemaName: string;
   private pool: Pool;
   private client: PoolClient;
 
   constructor(private readonly pgCacheOptions: PgSortKeyCacheOptions) {
+    if (!pgCacheOptions.schemaName) {
+      throw new Error('Schema name cannot be empty');
+    }
     if (!pgCacheOptions.tableName) {
       throw new Error('Table name cannot be empty');
     }
+    this.schemaName = pgCacheOptions.schemaName;
     this.tableName = pgCacheOptions.tableName;
   }
 
   private async createTableIfNotExists() {
-    await this.connection().query("CREATE schema if not exists warp; SET search_path TO 'warp';");
+    await this.connection().query(`CREATE schema if not exists "${this.schemaName}"; SET search_path TO '${this.schemaName}';`);
     this.logger.info(`Attempting to create table ${this.tableName}`);
     const query = `
           CREATE TABLE IF NOT EXISTS "${this.tableName}"
@@ -63,7 +68,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async delete(key: string): Promise<void> {
-    await this.connection().query(`DELETE FROM warp."${this.tableName}" WHERE key = $1;`, [key]);
+    await this.connection().query(`DELETE FROM "${this.schemaName}"."${this.tableName}" WHERE key = $1;`, [key]);
   }
 
   dump(): Promise<any> {
@@ -73,7 +78,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   async get(cacheKey: CacheKey): Promise<SortKeyCacheResult<V> | null> {
     const result = await this.connection().query(
       `SELECT value
-       FROM warp."${this.tableName}"
+       FROM "${this.schemaName}"."${this.tableName}"
        WHERE key = $1
          AND sort_key = $2;`,
       [cacheKey.key, cacheKey.sortKey]
@@ -87,7 +92,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
 
   async getLast(key: string): Promise<SortKeyCacheResult<V> | null> {
     const result = await this.connection().query(
-      `SELECT sort_key, value FROM warp."${this.tableName}" WHERE key = $1 ORDER BY sort_key DESC LIMIT 1;`,
+      `SELECT sort_key, value FROM "${this.schemaName}"."${this.tableName}" WHERE key = $1 ORDER BY sort_key DESC LIMIT 1;`,
       [key]
     );
 
@@ -98,13 +103,13 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async getLastSortKey(): Promise<string | null> {
-    const result = await this.connection().query(`SELECT max(sort_key) as sort_key FROM warp."${this.tableName}";`);
+    const result = await this.connection().query(`SELECT max(sort_key) as sort_key FROM "${this.schemaName}"."${this.tableName}";`);
     return result.rows[0].sort_key == '' ? null : result.rows[0].sortKey;
   }
 
   async getLessOrEqual(key: string, sortKey: string): Promise<SortKeyCacheResult<V> | null> {
     const result = await this.connection().query(
-      `SELECT sort_key, value FROM warp."${this.tableName}" WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1;`,
+      `SELECT sort_key, value FROM "${this.schemaName}"."${this.tableName}" WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1;`,
       [key, sortKey]
     );
 
@@ -121,7 +126,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     });
 
     this.logger.info(`Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`);
-    await this.pool.query("CREATE schema if not exists warp; SET search_path TO 'warp';");
+    await this.pool.query(`CREATE schema if not exists "${this.schemaName}"; SET search_path TO "${this.schemaName}";`);
     await this.createTableIfNotExists();
     this.logger.info(`Setup finished`);
   }
@@ -153,7 +158,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     const allItems = +(
       await this.client.query(
         `SELECT count(1) AS total
-         FROM warp."${this.tableName}"`
+         FROM "${this.schemaName}"."${this.tableName}"`
       )
     ).rows[0].total;
 
@@ -162,10 +167,10 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
         `
             WITH sorted_cache AS
                          (SELECT id, key, sort_key, row_number() over (PARTITION BY "key" ORDER BY sort_key DESC) AS rw
-            FROM warp."${this.tableName}"), deleted AS
+            FROM "${this.schemaName}"."${this.tableName}"), deleted AS
                 (
             DELETE
-            FROM warp."${this.tableName}"
+            FROM "${this.schemaName}"."${this.tableName}"
             WHERE id IN (SELECT id FROM sorted_cache WHERE rw > $1) RETURNING *)
             SELECT count(1) AS del_total
             FROM deleted;
@@ -188,7 +193,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
 
     await this.connection().query(
       `
-                INSERT INTO warp."${this.tableName}" (key, sort_key, value)
+                INSERT INTO "${this.schemaName}"."${this.tableName}" (key, sort_key, value)
                 VALUES ($1, $2, $3)
                 ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
       [stateCacheKey.key, stateCacheKey.sortKey, stringifiedValue]
@@ -199,7 +204,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     const rs = await this.connection().query(
       `
           SELECT count(1) as total
-          FROM warp."${this.tableName}"
+          FROM "${this.schemaName}"."${this.tableName}"
           GROUP BY key
       `
     );
@@ -210,10 +215,10 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
           `
           WITH sorted_cache AS
                    (SELECT id, row_number() over (ORDER BY sort_key DESC) AS rw
-                    FROM warp."${this.tableName}"
+                    FROM "${this.schemaName}"."${this.tableName}"
                     WHERE key = $1)
           DELETE
-          FROM warp."${this.tableName}"
+          FROM "${this.schemaName}"."${this.tableName}"
           WHERE id IN (SELECT id FROM sorted_cache WHERE rw >= $2);
       `,
           [key, this.pgCacheOptions.minEntriesPerKey]
@@ -241,7 +246,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
           DROP INDEX IF EXISTS "idx_${this.tableName}_key_sk";
           DROP INDEX IF EXISTS "idx_${this.tableName}_key";
           DROP INDEX IF EXISTS "idx_${this.tableName}_owner";
-          DROP TABLE IF EXISTS warp."${this.tableName}";
+          DROP TABLE IF EXISTS "${this.schemaName}"."${this.tableName}";
       `
     );
   }
@@ -269,7 +274,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   async del(cacheKey: CacheKey): Promise<void> {
     await this.connection().query(
       `
-              INSERT INTO warp."${this.tableName}" (key, sort_key, value)
+              INSERT INTO "${this.schemaName}"."${this.tableName}" (key, sort_key, value)
               VALUES ($1, $2, NULL)
               ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
       [cacheKey.key, cacheKey.sortKey]
@@ -281,7 +286,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     const order = options?.reverse ? 'DESC' : 'ASC';
     const result = await this.connection().query({
       text: `WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
-                                     FROM warp."${this.tableName}"
+                                     FROM "${this.schemaName}"."${this.tableName}"
                                      WHERE sort_key <= $1
                                        AND value IS NOT NULL
                                        AND ($2::text IS NULL OR key >= $2)
@@ -302,7 +307,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     const result = await this.connection().query(
       `
               WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
-                                     FROM warp."${this.tableName}"
+                                     FROM "${this.schemaName}"."${this.tableName}"
                                      WHERE sort_key <= $1
                                        AND value IS NOT NULL
                                        AND ($2::text IS NULL OR key >= $2)
