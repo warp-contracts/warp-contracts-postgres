@@ -8,6 +8,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
 
   private readonly tableName: string;
   private readonly schemaName: string;
+  private setupPerformed = false;
   private pool: Pool;
   private client: PoolClient;
 
@@ -140,6 +141,10 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async open(): Promise<void> {
+    if (!this.setupPerformed) {
+      await this.setUp();
+      this.setupPerformed = true;
+    }
     if (!this.client) {
       this.client = await this.pool.connect();
     }
