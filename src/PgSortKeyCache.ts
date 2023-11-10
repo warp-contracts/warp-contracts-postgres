@@ -20,6 +20,9 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     }
     this.schemaName = pgCacheOptions.schemaName;
     this.tableName = pgCacheOptions.tableName;
+    this.pool = new Pool(pgCacheOptions).on('error', (err) => {
+      this.logger.error('Unexpected error on idle client', err);
+    });
   }
 
   private async createTableIfNotExists() {
@@ -54,10 +57,15 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       this.client.release();
       this.client = null;
     }
+    this.logger.info(`Connection released back to the pool`);
+    return;
+  }
+
+  async cleanUp(): Promise<void> {
+    await this.close();
     await this.pool.end();
     this.pool = null;
-    this.logger.info(`Connection closed`);
-    return;
+    this.logger.info(`Pool cleaned up`);
   }
 
   async commit(): Promise<void> {
@@ -123,16 +131,18 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     return null;
   }
 
-  async open(): Promise<void> {
+  async setUp(): Promise<void> {
     const conf = this.pgCacheOptions;
-    this.pool = new Pool(conf).on('error', (err) => {
-      this.logger.error('Unexpected error on idle client', err);
-    });
-
     this.logger.info(`Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`);
     await this.pool.query(`CREATE schema if not exists "${this.schemaName}"; SET search_path TO "${this.schemaName}";`);
     await this.createTableIfNotExists();
     this.logger.info(`Setup finished`);
+  }
+
+  async open(): Promise<void> {
+    if (!this.client) {
+      this.client = await this.pool.connect();
+    }
   }
 
   private connection(): Pool | PoolClient {
