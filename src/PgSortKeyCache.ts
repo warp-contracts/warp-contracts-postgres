@@ -224,8 +224,8 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       `
           SELECT count(1) as total
           FROM "${this.schemaName}"."${this.tableName}"
-          GROUP BY key
-      `
+          WHERE key = $1
+      `, [key]
     );
     if (rs.rows.length > 0) {
       const entriesTotal = rs.rows[0].total;
