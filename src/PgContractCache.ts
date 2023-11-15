@@ -240,7 +240,8 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
           SELECT count(1) as total
           FROM warp.sort_key_cache
           WHERE key = $1;
-      `, [key]
+      `,
+      [key]
     );
     if (rs.rows.length > 0) {
       const entriesTotal = rs.rows[0].total;
