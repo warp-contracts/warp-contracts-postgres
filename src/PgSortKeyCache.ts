@@ -21,9 +21,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     }
     this.schemaName = pgCacheOptions.schemaName;
     this.tableName = pgCacheOptions.tableName;
-    this.pool = new Pool(pgCacheOptions).on('error', (err) => {
-      this.logger.error('Unexpected error on idle client', err);
-    });
+    this.pool = new Pool(pgCacheOptions);
   }
 
   private async createTableIfNotExists() {
