@@ -1,16 +1,26 @@
-import { BatchDBOp, CacheKey, LoggerFactory, PruneStats, SortKeyCache, SortKeyCacheResult } from 'warp-contracts';
+import {
+  BatchDBOp,
+  Benchmark,
+  CacheKey,
+  LoggerFactory,
+  PruneStats,
+  SortKeyCache,
+  SortKeyCacheResult
+} from 'warp-contracts';
 import { Pool, PoolClient } from 'pg';
 import { SortKeyCacheRangeOptions } from 'warp-contracts/lib/types/cache/SortKeyCacheRangeOptions';
 import { PgSortKeyCacheOptions } from './PgSortKeyCacheOptions';
 
 export class PgSortKeyCache<V> implements SortKeyCache<V> {
   private readonly logger = LoggerFactory.INST.create(PgSortKeyCache.name);
+  private readonly benchmarkLogger = LoggerFactory.INST.create(PgSortKeyCache.name + 'Benchmark');
 
   private readonly tableName: string;
   private readonly schemaName: string;
   private setupPerformed = false;
   private pool: Pool;
   private client: PoolClient;
+  private clientBenchmark: Benchmark;
 
   constructor(private readonly pgCacheOptions: PgSortKeyCacheOptions) {
     if (!pgCacheOptions.schemaName) {
@@ -44,6 +54,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async begin(): Promise<void> {
+    this.clientBenchmark = Benchmark.measure();
     this.logger.debug(`Begin transaction`);
     if (this.client == null) {
       this.client = await this.pool.connect();
@@ -55,8 +66,8 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     if (this.client) {
       this.client.release();
       this.client = null;
+      this.logger.info(`Connection released back to the pool`);
     }
-    this.logger.info(`Connection released back to the pool`);
     return;
   }
 
@@ -74,10 +85,23 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       return;
     }
     await this.client.query('COMMIT;');
+    if (this.clientBenchmark != null) {
+      this.clientBenchmark.stop();
+      this.benchmarkLogger.debug('PG Benchmark', {
+        commit: this.clientBenchmark.elapsed()
+      });
+      this.clientBenchmark = null;
+    }
   }
 
   async delete(key: string): Promise<void> {
+    const delBenchmark = Benchmark.measure();
     await this.connection().query(`DELETE FROM "${this.schemaName}"."${this.tableName}" WHERE key = $1;`, [key]);
+    delBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      delete: delBenchmark.elapsed(),
+      'key   ': key
+    });
   }
 
   dump(): Promise<any> {
@@ -85,6 +109,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async get(cacheKey: CacheKey): Promise<SortKeyCacheResult<V> | null> {
+    const getBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       `SELECT value
        FROM "${this.schemaName}"."${this.tableName}"
@@ -93,6 +118,11 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       [cacheKey.key, cacheKey.sortKey]
     );
 
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'get     ': getBenchmark.elapsed(),
+      cacheKey: cacheKey
+    });
     if (result && result.rows.length > 0) {
       return new SortKeyCacheResult<V>(cacheKey.sortKey, result.rows[0].value);
     }
@@ -100,11 +130,17 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async getLast(key: string): Promise<SortKeyCacheResult<V> | null> {
+    const getLastBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       `SELECT sort_key, value FROM "${this.schemaName}"."${this.tableName}" WHERE key = $1 ORDER BY sort_key DESC LIMIT 1;`,
       [key]
     );
 
+    getLastBenchmark.stop();
+    this.logger.info('PG Benchmark', {
+      getLast: getLastBenchmark.elapsed(),
+      'key    ': key
+    });
     if (result && result.rows && result.rows.length > 0) {
       return new SortKeyCacheResult<V>(result.rows[0].sort_key, result.rows[0].value);
     }
@@ -112,18 +148,30 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async getLastSortKey(): Promise<string | null> {
+    const getBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       `SELECT max(sort_key) as sort_key FROM "${this.schemaName}"."${this.tableName}";`
     );
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      getLastSortKey: getBenchmark.elapsed()
+    });
     return result.rows[0].sort_key == '' ? null : result.rows[0].sortKey;
   }
 
   async getLessOrEqual(key: string, sortKey: string): Promise<SortKeyCacheResult<V> | null> {
+    const getBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       `SELECT sort_key, value FROM "${this.schemaName}"."${this.tableName}" WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1;`,
       [key, sortKey]
     );
 
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      getLessOrEqual: getBenchmark.elapsed(),
+      'key           ': key,
+      'sortKey       ': sortKey
+    });
     if (result && result.rows.length > 0) {
       return new SortKeyCacheResult<V>(result.rows[0].sort_key, result.rows[0].value);
     }
@@ -139,6 +187,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async open(): Promise<void> {
+    const openBenchmark = Benchmark.measure();
     if (!this.setupPerformed) {
       await this.setUp();
       this.setupPerformed = true;
@@ -146,6 +195,10 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
     if (!this.client) {
       this.client = await this.pool.connect();
     }
+    openBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      open: openBenchmark.elapsed()
+    });
   }
 
   private connection(): Pool | PoolClient {
@@ -168,6 +221,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
    -> hence the entries [a,b,c,d] are removed and left are the [e,f]
    */
   async prune(entriesStored = 5): Promise<PruneStats> {
+    const pruneBenchmark = Benchmark.measure();
     if (!entriesStored || entriesStored <= 0) {
       entriesStored = 1;
     }
@@ -196,6 +250,10 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       )
     ).rows[0].del_total;
 
+    pruneBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      prune: pruneBenchmark.elapsed()
+    });
     return {
       entriesBefore: allItems,
       entriesAfter: allItems - deleted,
@@ -205,6 +263,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async put(stateCacheKey: CacheKey, value: V): Promise<void> {
+    const putBenchmark = Benchmark.measure();
     const stringifiedValue = JSON.stringify(value);
     await this.removeOldestEntries(stateCacheKey.key);
 
@@ -215,6 +274,12 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
                 ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
       [stateCacheKey.key, stateCacheKey.sortKey, stringifiedValue]
     );
+
+    putBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'put          ': putBenchmark.elapsed(),
+      stateCacheKey: stateCacheKey
+    });
   }
 
   private async removeOldestEntries(key: string) {
@@ -252,6 +317,13 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       return;
     }
     await this.client.query('ROLLBACK;');
+    if (this.clientBenchmark != null) {
+      this.clientBenchmark.stop();
+      this.benchmarkLogger.debug('PG Benchmark', {
+        rollback: this.clientBenchmark.elapsed()
+      });
+      this.clientBenchmark = null;
+    }
   }
 
   storage<S>(): S {
@@ -290,6 +362,7 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
   }
 
   async del(cacheKey: CacheKey): Promise<void> {
+    const delBenchmark = Benchmark.measure();
     await this.connection().query(
       `
               INSERT INTO "${this.schemaName}"."${this.tableName}" (key, sort_key, value)
@@ -297,10 +370,16 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
               ON CONFLICT(key, sort_key) DO UPDATE SET value = EXCLUDED.value`,
       [cacheKey.key, cacheKey.sortKey]
     );
+    delBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'del     ': delBenchmark.elapsed(),
+      cacheKey: cacheKey
+    });
     return Promise.resolve(undefined);
   }
 
   async keys(sortKey: string, options?: SortKeyCacheRangeOptions): Promise<string[]> {
+    const keysBenchmark = Benchmark.measure();
     const order = options?.reverse ? 'DESC' : 'ASC';
     const result = await this.connection().query({
       text: `WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
@@ -317,10 +396,17 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       values: [sortKey, options?.gte, options?.lt, options?.limit],
       rowMode: 'array'
     });
+    keysBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'keys    ': keysBenchmark.elapsed(),
+      'keys len': result.rows.length,
+      'sortKey ': sortKey
+    });
     return result.rows.flat();
   }
 
   async kvMap(sortKey: string, options?: SortKeyCacheRangeOptions): Promise<Map<string, V>> {
+    const kvBenchmark = Benchmark.measure();
     const order = options?.reverse ? 'DESC' : 'ASC';
     const result = await this.connection().query(
       `
@@ -337,6 +423,13 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
               order by key ${order};`,
       [sortKey, options?.gte, options?.lt, options?.limit]
     );
-    return new Map(result.rows.map((i): [string, V] => [i.key, i.value]));
+    const kv = new Map(result.rows.map((i): [string, V] => [i.key, i.value]));
+    kvBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'kv     ': kvBenchmark.elapsed(),
+      'kv size': kv.size,
+      sortKey: sortKey
+    });
+    return kv;
   }
 }
