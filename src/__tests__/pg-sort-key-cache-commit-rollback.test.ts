@@ -8,6 +8,10 @@ beforeAll(async () => {
   sut = await sortKeyCache(100);
 });
 
+afterAll(async () => {
+  await sut.cleanUp();
+});
+
 describe('Postgres cache batch', () => {
   it('access range keys during active transaction and commit', async () => {
     await sut.open();
