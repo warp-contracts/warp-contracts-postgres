@@ -1,5 +1,6 @@
 import {
   BasicSortKeyCache,
+  Benchmark,
   CacheKey,
   EvalStateResult,
   LoggerFactory,
@@ -11,9 +12,11 @@ import { PgContractCacheOptions } from './PgContractCacheOptions';
 
 export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>> {
   private readonly logger = LoggerFactory.INST.create(PgContractCache.name);
+  private readonly benchmarkLogger = LoggerFactory.INST.create(PgContractCache.name + 'Benchmark');
 
   private readonly pool: Pool;
   private client: PoolClient;
+  private clientBenchmark: Benchmark;
 
   constructor(private readonly pgCacheOptions?: PgContractCacheOptions) {
     if (!pgCacheOptions) {
@@ -65,12 +68,13 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
   }
 
   async begin(): Promise<void> {
+    this.clientBenchmark = Benchmark.measure();
     await this.client.query('BEGIN;');
   }
 
   async close(): Promise<void> {
     if (this.client) {
-      await this.client.release();
+      this.client.release();
     }
     await this.pool.end();
     this.logger.info(`Connection closed`);
@@ -79,10 +83,23 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
 
   async commit(): Promise<void> {
     await this.client.query('COMMIT;');
+    if (this.clientBenchmark != null) {
+      this.clientBenchmark.stop();
+      this.benchmarkLogger.debug('PG Benchmark', {
+        commit: this.clientBenchmark.elapsed()
+      });
+      this.clientBenchmark = null;
+    }
   }
 
   async delete(key: string): Promise<void> {
+    const delBenchmark = Benchmark.measure();
     await this.connection().query('DELETE FROM warp.sort_key_cache WHERE key = $1;', [key]);
+    delBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      delete: delBenchmark.elapsed(),
+      'key   ': key
+    });
   }
 
   dump(): Promise<any> {
@@ -90,6 +107,7 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
   }
 
   async get(cacheKey: CacheKey): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
+    const getBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       `SELECT value
        FROM warp.sort_key_cache
@@ -98,6 +116,11 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       [cacheKey.key, cacheKey.sortKey]
     );
 
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'get     ': getBenchmark.elapsed(),
+      cacheKey: cacheKey
+    });
     if (result && result.rows.length > 0) {
       return new SortKeyCacheResult<EvalStateResult<V>>(
         cacheKey.sortKey,
@@ -108,11 +131,17 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
   }
 
   async getLast(key: string): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
+    const getLastBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       'SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 ORDER BY sort_key DESC LIMIT 1',
       [key]
     );
 
+    getLastBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      getLast: getLastBenchmark.elapsed(),
+      'key    ': key
+    });
     if (result && result.rows && result.rows.length > 0) {
       return new SortKeyCacheResult<EvalStateResult<V>>(
         result.rows[0].sort_key,
@@ -123,16 +152,28 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
   }
 
   async getLastSortKey(): Promise<string | null> {
+    const getBenchmark = Benchmark.measure();
     const result = await this.connection().query('SELECT max(sort_key) as sort_key FROM warp.sort_key_cache');
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      getLastSortKey: getBenchmark.elapsed()
+    });
     return result.rows[0].sort_key == '' ? null : result.rows[0].sortKey;
   }
 
   async getLessOrEqual(key: string, sortKey: string): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
+    const getBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       'SELECT sort_key, value FROM warp.sort_key_cache WHERE key = $1 AND sort_key <= $2 ORDER BY sort_key DESC LIMIT 1',
       [key, sortKey]
     );
 
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      getLessOrEqual: getBenchmark.elapsed(),
+      'key           ': key,
+      'sortKey       ': sortKey
+    });
     if (result && result.rows.length > 0) {
       return new SortKeyCacheResult<EvalStateResult<V>>(
         result.rows[0].sort_key,
@@ -145,11 +186,16 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
   async open(): Promise<void> {
     const conf = this.pgCacheOptions;
     this.logger.info(`Connecting pg... ${conf.user}@${conf.host}:${conf.port}/${conf.database}`);
+    const openBenchmark = Benchmark.measure();
     this.client = await this.pool.connect();
     await this.client.query("CREATE schema if not exists warp; SET search_path TO 'warp';");
     await this.sortKeyTable();
     await this.validityTable();
     this.logger.info(`Connected`);
+    openBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      open: openBenchmark.elapsed()
+    });
   }
 
   private connection(): Pool | PoolClient {
@@ -172,6 +218,7 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
    -> hence the entries [a,b,c,d] are removed and left are the [e,f]
    */
   async prune(entriesStored = 5): Promise<PruneStats> {
+    const pruneBenchmark = Benchmark.measure();
     if (!entriesStored || entriesStored <= 0) {
       entriesStored = 1;
     }
@@ -200,6 +247,10 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       )
     ).rows[0].del_total;
 
+    pruneBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      prune: pruneBenchmark.elapsed()
+    });
     return {
       entriesBefore: allItems,
       entriesAfter: allItems - deleted,
@@ -209,9 +260,23 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
   }
 
   async put(stateCacheKey: CacheKey, value: EvalStateResult<V>): Promise<void> {
-    const stringifiedState = JSON.stringify(value.state);
-    await this.removeOldestEntries(stateCacheKey.key);
+    const putBenchmark = Benchmark.measure();
 
+    const stringifyBenchmark = Benchmark.measure();
+    const stringifiedState = JSON.stringify(value.state);
+    stringifyBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      stringify: stringifyBenchmark.elapsed()
+    });
+
+    const rmBenchmark = Benchmark.measure();
+    await this.removeOldestEntries(stateCacheKey.key);
+    rmBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'remove   ': rmBenchmark.elapsed()
+    });
+
+    const insertBenchmark = Benchmark.measure();
     await this.connection().query(
       `
                 INSERT INTO warp.sort_key_cache (key, sort_key, value)
@@ -232,6 +297,16 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
         [stateCacheKey.key, stateCacheKey.sortKey, tx, value.validity[tx], value.errorMessages[tx]]
       );
     }
+    insertBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'insert   ': insertBenchmark.elapsed()
+    });
+
+    putBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'put          ': putBenchmark.elapsed(),
+      stateCacheKey: stateCacheKey
+    });
   }
 
   private async removeOldestEntries(key: string) {
@@ -267,6 +342,8 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
    */
   async setSignature(cacheKey: CacheKey, hash: string, signature: string): Promise<void> {
     this.logger.debug(`Attempting to set signature`, cacheKey, signature);
+    const signatureBenchmark = Benchmark.measure();
+
     const result = await this.pool.query(
       `
                     WITH updated AS (
@@ -281,10 +358,22 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       [hash, signature, cacheKey.key, cacheKey.sortKey]
     );
     this.logger.debug(`Signature set`, result);
+    signatureBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      setSignature: signatureBenchmark.elapsed(),
+      'cacheKey    ': cacheKey
+    });
   }
 
   async rollback(): Promise<void> {
     await this.client.query('ROLLBACK;');
+    if (this.clientBenchmark != null) {
+      this.clientBenchmark.stop();
+      this.benchmarkLogger.debug('PG Benchmark', {
+        rollback: this.clientBenchmark.elapsed()
+      });
+      this.clientBenchmark = null;
+    }
   }
 
   storage<S>(): S {
