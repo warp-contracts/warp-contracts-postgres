@@ -17,6 +17,7 @@ export const contractCache = async function (
   const pgOptions: PgContractCacheOptions = {
     minEntriesPerContract: maxEntries || 100 * numRepeatingEntries,
     maxEntriesPerContract: maxEntries || 100 * numRepeatingEntries,
+    validityBatchSize: 2,
     user: 'postgres',
     password: 'postgres',
     host: 'localhost',
@@ -61,6 +62,6 @@ export const sortKeyCache = async function (
   return new PgSortKeyCache<unknown>(pgOptions);
 };
 
-export const evalState = function (value: any) {
-  return new EvalStateResult(value, {}, {});
+export const evalState = function (value: any, validity = {}, err = {}) {
+  return new EvalStateResult(value, validity, err);
 };

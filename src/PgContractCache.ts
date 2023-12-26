@@ -22,8 +22,12 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
     if (!pgCacheOptions) {
       this.pgCacheOptions = {
         minEntriesPerContract: 10,
-        maxEntriesPerContract: 100
+        maxEntriesPerContract: 100,
+        validityBatchSize: 1000
       };
+    }
+    if (!pgCacheOptions.validityBatchSize) {
+      pgCacheOptions.validityBatchSize = 1000;
     }
     this.pool = new Pool(pgCacheOptions);
   }
@@ -128,6 +132,32 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       );
     }
     return null;
+  }
+
+  async getValidityAll(cacheKey: CacheKey): Promise<PgContractValidity> {
+    const getBenchmark = Benchmark.measure();
+    const result = await this.connection().query(
+      `WITH validity_page AS
+                (SELECT tx_id, valid
+                 from warp.validity
+                 where key = $1
+                   and sort_key <= $2
+                 ORDER BY sort_key DESC, id DESC)
+       select json_object_agg(tx_id, valid) as v, count(*) as count
+       from validity_page;`,
+      [cacheKey.key, cacheKey.sortKey]
+    );
+
+    getBenchmark.stop();
+    this.benchmarkLogger.debug('PG Benchmark', {
+      'getValidityAll ': getBenchmark.elapsed(),
+      'cacheKey       ': cacheKey
+    });
+
+    if (result && result.rows.length > 0) {
+      return new PgContractValidity(result.rows[0].v, result.rows[0].count);
+    }
+    return new PgContractValidity({}, 0);
   }
 
   async getLast(key: string): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
@@ -285,18 +315,19 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       [stateCacheKey.key, stateCacheKey.sortKey, stringifiedState]
     );
 
-    for (const tx in value.validity) {
-      await this.connection().query(
-        `
-            INSERT INTO warp.validity (key, sort_key, tx_id, valid, error_message)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT(key, tx_id) DO UPDATE
-                SET valid         = EXCLUDED.valid,
-                    sort_key      = EXCLUDED.sort_key,
-                    error_message = EXCLUDED.error_message`,
-        [stateCacheKey.key, stateCacheKey.sortKey, tx, value.validity[tx], value.errorMessages[tx]]
-      );
+    let insertValues = '';
+    let batchCounter = 0;
+    for (const [tx, v] of Object.entries(value.validity)) {
+      batchCounter++;
+      insertValues += `${batchCounter > 1 ? "," : ""} ('${stateCacheKey.key}', '${stateCacheKey.sortKey}', '${tx}', ${v}, '${value.errorMessages[tx]}')`
+      if (batchCounter % this.pgCacheOptions.validityBatchSize === 0) {
+        await this.queryInsertValidity(insertValues);
+        insertValues = '';
+        batchCounter = 0;
+      }
     }
+    await this.queryInsertValidity(insertValues);
+
     insertBenchmark.stop();
     this.benchmarkLogger.debug('PG Benchmark', {
       'insert   ': insertBenchmark.elapsed()
@@ -307,6 +338,21 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       'put          ': putBenchmark.elapsed(),
       stateCacheKey: stateCacheKey
     });
+  }
+
+  private async queryInsertValidity(formattedValues: string): Promise<void> {
+    if (formattedValues) {
+      await this.connection().query(
+        `INSERT INTO warp.validity (key, sort_key, tx_id, valid, error_message)
+        VALUES
+        ${formattedValues} 
+        ON CONFLICT(key, tx_id)
+        DO UPDATE
+        SET valid = EXCLUDED.valid,
+                    sort_key      = EXCLUDED.sort_key,
+                    error_message = EXCLUDED.error_message`
+      );
+    }
   }
 
   private async removeOldestEntries(key: string) {
@@ -393,4 +439,14 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       `
     );
   }
+}
+
+export class PgContractValidity {
+  constructor(v: Record<string, boolean>, count: number) {
+    this.validity = v;
+    this.count = count;
+  }
+
+  readonly validity: Record<string, boolean>;
+  readonly count: number
 }
