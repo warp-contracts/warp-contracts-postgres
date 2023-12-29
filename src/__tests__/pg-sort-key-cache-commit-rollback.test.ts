@@ -114,7 +114,7 @@ describe('Postgres cache batch', () => {
 
   it('multiple operations', async () => {
     await sut.open();
-    let sortKey = 395;
+    const sortKey = 395;
 
     await sut.begin();
     await sut.put(new CacheKey('key.one', getSortKey(sortKey)), 111);
@@ -173,7 +173,7 @@ describe('Postgres cache batch', () => {
 
     await sut.begin();
     const transactionKeys = await sut.keys(getSortKey(sortKey));
-    expect(transactionKeys).toEqual(["change", "key.one", "key.two", "user.11", "user.13", "user.14", "user.15"]);
+    expect(transactionKeys).toEqual(['change', 'key.one', 'key.two', 'user.11', 'user.13', 'user.14', 'user.15']);
 
     const kv = await sut.kvMap(getSortKey(sortKey));
     expect(kv.get('message')).toBeFalsy();
@@ -183,5 +183,5 @@ describe('Postgres cache batch', () => {
 
     await sut.drop();
     await sut.close();
-  })
+  });
 });
