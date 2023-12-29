@@ -39,7 +39,7 @@ describe('Postgres cache batch', () => {
 
   it('keys order natural and reversed', async () => {
     await sut.open();
-    const sortKey = 348;
+    let sortKey = 348;
 
     await sut.begin();
 
@@ -62,6 +62,7 @@ describe('Postgres cache batch', () => {
     expect(naturalOrder.reverse()).toEqual(reverseOrder);
 
     await sut.commit();
+    sortKey++;
 
     await sut.begin();
     await sut.del(new CacheKey('user.12', getSortKey(sortKey)));
@@ -113,7 +114,7 @@ describe('Postgres cache batch', () => {
 
   it('multiple operations', async () => {
     await sut.open();
-    const sortKey = 395;
+    let sortKey = 395;
 
     await sut.begin();
     await sut.put(new CacheKey('key.one', getSortKey(sortKey)), 111);
@@ -152,7 +153,35 @@ describe('Postgres cache batch', () => {
     );
     expect(rollbackKeys).toEqual(['key.two', 'key.one']);
 
-    await sut.drop();
     await sut.close();
   });
+
+  it('delete and fetch kv map', async () => {
+    await sut.open();
+    let sortKey = 405;
+
+    await sut.begin();
+    await sut.put(new CacheKey('message', getSortKey(sortKey)), 'world');
+    await sut.put(new CacheKey('change', getSortKey(sortKey)), 'it');
+    await sut.commit();
+    sortKey++;
+
+    await sut.begin();
+    await sut.del(new CacheKey('message', getSortKey(sortKey)));
+    await sut.commit();
+    sortKey++;
+
+    await sut.begin();
+    const transactionKeys = await sut.keys(getSortKey(sortKey));
+    expect(transactionKeys).toEqual(["change", "key.one", "key.two", "user.11", "user.13", "user.14", "user.15"]);
+
+    const kv = await sut.kvMap(getSortKey(sortKey));
+    expect(kv.get('message')).toBeFalsy();
+    expect(kv.get('change')).toBeTruthy();
+
+    await sut.commit();
+
+    await sut.drop();
+    await sut.close();
+  })
 });
