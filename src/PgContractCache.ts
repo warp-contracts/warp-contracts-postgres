@@ -319,7 +319,9 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
     let batchCounter = 0;
     for (const [tx, v] of Object.entries(value.validity)) {
       batchCounter++;
-      insertValues += `${batchCounter > 1 ? "," : ""} ('${stateCacheKey.key}', '${stateCacheKey.sortKey}', '${tx}', ${v}, '${value.errorMessages[tx]}')`
+      insertValues += `${batchCounter > 1 ? ',' : ''} ('${stateCacheKey.key}', '${
+        stateCacheKey.sortKey
+      }', '${tx}', ${v}, '${value.errorMessages[tx]}')`;
       if (batchCounter % this.pgCacheOptions.validityBatchSize === 0) {
         await this.queryInsertValidity(insertValues);
         insertValues = '';
@@ -448,5 +450,5 @@ export class PgContractValidity {
   }
 
   readonly validity: Record<string, boolean>;
-  readonly count: number
+  readonly count: number;
 }
