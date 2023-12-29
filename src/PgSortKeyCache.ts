@@ -385,14 +385,14 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
       text: `WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
                                      FROM "${this.schemaName}"."${this.tableName}"
                                      WHERE sort_key <= $1
-                                       AND value IS NOT NULL
                                        AND ($2::text IS NULL OR key >= $2)
                                        AND ($3::text IS NULL OR key < $3)
-                                     order by key ${order}, sort_key desc
-                                     LIMIT $4::bigint)
-              select key, value
+                                     order by key ${order}, sort_key desc)
+              select key
               from latest_values
-              order by key ${order};`,
+              WHERE value IS NOT NULL
+              order by key ${order}
+              LIMIT $4::bigint;`,
       values: [sortKey, options?.gte, options?.lt, options?.limit],
       rowMode: 'array'
     });
@@ -413,14 +413,14 @@ export class PgSortKeyCache<V> implements SortKeyCache<V> {
               WITH latest_values AS (SELECT DISTINCT ON (key) key, sort_key, value
                                      FROM "${this.schemaName}"."${this.tableName}"
                                      WHERE sort_key <= $1
-                                       AND value IS NOT NULL
                                        AND ($2::text IS NULL OR key >= $2)
                                        AND ($3::text IS NULL OR key < $3)
-                                     order by key ${order}, sort_key desc
-                                     LIMIT $4::bigint)
+                                     order by key ${order}, sort_key desc)
               select key, value
               from latest_values
-              order by key ${order};`,
+              WHERE value IS NOT NULL
+              order by key ${order}
+              LIMIT $4::bigint;`,
       [sortKey, options?.gte, options?.lt, options?.limit]
     );
     const kv = new Map(result.rows.map((i): [string, V] => [i.key, i.value]));
