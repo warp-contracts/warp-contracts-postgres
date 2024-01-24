@@ -20,7 +20,10 @@ describe('Postgres cache', () => {
           zz15: true
         },
         {
-          zz12: 'bum!!'
+          zz12: 'bum!!',
+          zz13: undefined,
+          zz14: undefined,
+          zz15: null
         }
       )
     );
@@ -54,7 +57,8 @@ describe('Postgres cache', () => {
           zz18: true
         },
         {
-          zz17: 'bum!!'
+          zz17: 'bum!!',
+          zz18: undefined
         }
       )
     );
@@ -97,6 +101,16 @@ describe('Postgres cache', () => {
         zz16: true,
         zz17: false,
         zz18: true
+      },
+      errorMessages: {
+        zz11: null,
+        zz12: 'bum!!',
+        zz13: null,
+        zz14: null,
+        zz15: null,
+        zz16: null,
+        zz17: 'bum!!',
+        zz18: null
       }
     });
 
