@@ -138,12 +138,12 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
     const getBenchmark = Benchmark.measure();
     const result = await this.connection().query(
       `WITH validity_page AS
-                (SELECT tx_id, valid
+                (SELECT tx_id, valid, error_message
                  from warp.validity
                  where key = $1
                    and sort_key <= $2
                  ORDER BY sort_key DESC, id DESC)
-       select json_object_agg(tx_id, valid) as v, count(*) as count
+       select json_object_agg(tx_id, valid) as v, json_object_agg(tx_id, error_message) as err, count(*) as count
        from validity_page;`,
       [cacheKey.key, cacheKey.sortKey]
     );
@@ -155,9 +155,9 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
     });
 
     if (result && result.rows.length > 0) {
-      return new PgContractValidity(result.rows[0].v, result.rows[0].count);
+      return new PgContractValidity(result.rows[0].v, result.rows[0].err, result.rows[0].count);
     }
-    return new PgContractValidity({}, 0);
+    return new PgContractValidity({}, {}, 0);
   }
 
   async getLast(key: string): Promise<SortKeyCacheResult<EvalStateResult<V>> | null> {
@@ -315,20 +315,23 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
       [stateCacheKey.key, stateCacheKey.sortKey, stringifiedState]
     );
 
-    let insertValues = '';
+    let sql = '';
     let batchCounter = 0;
+    let valueCounter = 0;
+    let values = [];
     for (const [tx, v] of Object.entries(value.validity)) {
       batchCounter++;
-      insertValues += `${batchCounter > 1 ? ',' : ''} ('${stateCacheKey.key}', '${
-        stateCacheKey.sortKey
-      }', '${tx}', ${v}, '${value.errorMessages[tx]}')`;
+      values.push(stateCacheKey.key, stateCacheKey.sortKey, tx, v, value.errorMessages[tx]);
+      sql += `${batchCounter > 1 ? ',' : ''} ($${++valueCounter}, $${++valueCounter}, $${++valueCounter}, $${++valueCounter}, $${++valueCounter})`;
       if (batchCounter % this.pgCacheOptions.validityBatchSize === 0) {
-        await this.queryInsertValidity(insertValues);
-        insertValues = '';
+        await this.queryInsertValidity(sql, values);
+        sql = '';
         batchCounter = 0;
+        valueCounter = 0;
+        values = [];
       }
     }
-    await this.queryInsertValidity(insertValues);
+    await this.queryInsertValidity(sql, values);
 
     insertBenchmark.stop();
     this.benchmarkLogger.debug('PG Benchmark', {
@@ -342,17 +345,18 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
     });
   }
 
-  private async queryInsertValidity(formattedValues: string): Promise<void> {
-    if (formattedValues) {
+  private async queryInsertValidity(sql: string, values: any[]): Promise<void> {
+    if (sql && values) {
       await this.connection().query(
         `INSERT INTO warp.validity (key, sort_key, tx_id, valid, error_message)
         VALUES
-        ${formattedValues} 
+        ${sql} 
         ON CONFLICT(key, tx_id)
         DO UPDATE
         SET valid = EXCLUDED.valid,
                     sort_key      = EXCLUDED.sort_key,
-                    error_message = EXCLUDED.error_message`
+                    error_message = EXCLUDED.error_message`,
+        values
       );
     }
   }
@@ -444,11 +448,13 @@ export class PgContractCache<V> implements BasicSortKeyCache<EvalStateResult<V>>
 }
 
 export class PgContractValidity {
-  constructor(v: Record<string, boolean>, count: number) {
+  constructor(v: Record<string, boolean>, err: Record<string, string>, count: number) {
     this.validity = v;
+    this.errorMessages = err;
     this.count = count;
   }
 
   readonly validity: Record<string, boolean>;
+  readonly errorMessages: Record<string, string>;
   readonly count: number;
 }
